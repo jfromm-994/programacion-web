@@ -1,41 +1,54 @@
-# Game Vault - TP1
+# Game Vault - TP2 (Persistencia de Datos)
 
 Aplicación web multiplataforma para registrar y comparar progresos, logros y horas jugadas en videojuegos.
 
-## Descripción del Dominio y Entidades
+---
 
-**Game Vault** permite gestionar el progreso consolidado de videojuegos almacenados en distintas plataformas.
+## Documentación de Persistencia
 
-### Entidades Principales
+La capa de datos se implementa utilizando **PostgreSQL 16**, orquestada mediante **Docker Compose**, y mapeada a código Go fuertemente tipado mediante **`sqlc`**.
 
-#### 1. Entidad Juego (1)
-Representa la información general e invariable de un título de videojuego.
-* **ID:** Identificador único.
-* **Título:** Nombre del juego.
-* **Género:** Categoría (Acción, RPG, Estrategia, etc.).
-* **Logros Totales:** Cantidad total de logros que posee el juego.
+### Esquema de la Base de Datos (`db/schema/schema.sql`)
 
-#### 2. Entidad Copia (N)
-Representa la instancia específica de un juego que posee el usuario en una plataforma determinada.
-* **ID:** Identificador único de la copia.
-* **Juego ID:** Referencia al juego correspondiente.
-* **Plataforma:** Entorno donde se posee (Steam, PlayStation, Xbox, Epic Games, etc.).
-* **Horas Jugadas:** Tiempo total acumulado en esa plataforma.
-* **Logros Obtenidos:** Cantidad de logros desbloqueados en esa plataforma.
+#### 1. Tabla `juegos`
+Representa la información general e invariable de cada título.
+* `id` (`SERIAL PRIMARY KEY`): Identificador único autoincremental.
+* `titulo` (`VARCHAR(255) UNIQUE NOT NULL`): Nombre del juego (restricción de unicidad).
+* `genero` (`VARCHAR(100) NOT NULL`): Categoría del videojuego.
+* `logros_totales` (`INT NOT NULL DEFAULT 0`): Cantidad total de logros disponibles.
+* `created_at` (`TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP`): Sello de tiempo de creación.
+
+#### 2. Tabla `copias`
+Representa las instancias específicas que posee el usuario en distintas plataformas.
+* `id` (`SERIAL PRIMARY KEY`): Identificador único autoincremental.
+* `juego_id` (`INT NOT NULL REFERENCES juegos(id) ON DELETE CASCADE`): Clave foránea con eliminación en cascada.
+* `plataforma` (`VARCHAR(100) NOT NULL`): Entorno de juego (Steam, PlayStation, etc.).
+* `horas_jugadas` (`NUMERIC(10, 2) NOT NULL DEFAULT 0.0`): Horas acumuladas.
+* `logros_obtenidos` (`INT NOT NULL DEFAULT 0`): Logros desbloqueados.
+* `created_at` (`TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP`): Sello de tiempo de creación.
+* **Restricción de Unicidad Compuesta:** `CONSTRAINT unique_juego_plataforma UNIQUE (juego_id, plataforma)` que impide registrar copias duplicadas para la misma plataforma en un mismo juego.
 
 ---
 
-## Requisitos previos
-- [Go](https://go.dev/) (versión 1.21 o superior).
+## Instrucciones de Ejecución y Pruebas Automatizadas
 
-## Instrucciones de ejecución
+### Requisitos previos
+- [Go](https://go.dev/) (v1.21 o superior).
+- [Docker Desktop](https://www.docker.com/) en ejecución.
+- [sqlc](https://sqlc.dev/) instalado.
 
-1. Clonar el repositorio y posicionarse en la rama `tp1`:
-   ```bash
-   git clone https://github.com/jfromm-994/programacion-web.git
-   cd programacion-web
-   git checkout tp1
-2. Ejecutar el servidor HTTP con Go: go run main.go
-3. Abrir el navegador e ingresar a http://localhost:8080 para visualizar la aplicación.
+### Ejecución de Pruebas Automatizadas
+Para ejecutar todo el ciclo de vida de pruebas (levantar base de datos, ejecutar consultas de prueba y limpiar contenedores/volúmenes), clona el repositorio y ejecuta:
+
+```bash
+./test.sh
+
+El script test.sh realiza automáticamente:
+1. Limpieza de contenedores y volúmenes anteriores (docker compose down -v).
+2. Generación de código Go a través de sqlc generate.
+3. Levantamiento del contenedor de PostgreSQL (docker compose up -d).
+4. Espera activa hasta que PostgreSQL esté listo para recibir conexiones.
+5. Ejecución de las pruebas unitarias con go test -v ./....
+6. Tareas posteriores de limpieza y destrucción de contenedores y volúmenes persistentes.
 
 ---
