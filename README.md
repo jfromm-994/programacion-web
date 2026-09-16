@@ -42,6 +42,7 @@ Para ejecutar todo el ciclo de vida de pruebas (levantar base de datos, ejecutar
 
 ```bash
 ./test.sh
+```
 
 El script test.sh realiza automáticamente:
 1. Limpieza de contenedores y volúmenes anteriores (docker compose down -v).
