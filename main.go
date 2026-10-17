@@ -1,70 +1,69 @@
 package main
 
 import (
-	"context"
 	"database/sql"
-	"fmt"
 	"log"
-
-	db "programacion-web/db/sqlc"
+	"net/http"
+	"os"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
+
+	db "programacion-web/db/sqlc"
+	"programacion-web/handlers"
 )
 
 func main() {
-	// 1. Cadena de conexión a PostgreSQL (coincide con docker-compose.yml)
-	connStr := "postgres://postgres:postgres@localhost:5432/gamevault?sslmode=disable"
+	dbURL := os.Getenv("DATABASE_URL")
+	if dbURL == "" {
+		dbURL = "postgres://postgres:postgres@localhost:5432/gamevault?sslmode=disable"
+	}
 
-	// 2. Abrir conexión con la base de datos
-	conn, err := sql.Open("pgx", connStr)
+	conn, err := sql.Open("pgx", dbURL)
 	if err != nil {
-		log.Fatalf("Error al configurar la conexión: %v", err)
+		log.Fatalf("Error al abrir conexión con la base de datos: %v", err)
 	}
 	defer conn.Close()
 
-	// 3. Verificar que la base de datos responda
 	if err := conn.Ping(); err != nil {
-		log.Fatalf("Error al conectar con la base de datos: %v", err)
+		log.Fatalf("No se pudo conectar a PostgreSQL: %v", err)
 	}
-	fmt.Println("¡Conexión exitosa a PostgreSQL!")
+	log.Println("Conexión con PostgreSQL establecida exitosamente.")
 
-	// 4. Instanciar el paquete generado por sqlc
 	queries := db.New(conn)
-	ctx := context.Background()
 
-	// 5. Probar crear un Juego de prueba
-	nuevoJuego, err := queries.CreateJuego(ctx, db.CreateJuegoParams{
-		Titulo:        "Hollow Knight",
-		Genero:        "Metroidvania",
-		LogrosTotales: 63,
-	})
-	if err != nil {
-		log.Printf("Aviso/Error al insertar juego: %v", err)
-	} else {
-		fmt.Printf("Juego CREADO con éxito -> ID: %d | Título: %s\n", nuevoJuego.ID, nuevoJuego.Titulo)
+	// Instanciamos los controladores
+	juegosHandler := handlers.NewJuegosHandler(queries)
+	copiasHandler := handlers.NewCopiasHandler(queries)
 
-		// 6. Probar crear una Copia para este juego
-		nuevaCopia, err := queries.CreateCopia(ctx, db.CreateCopiaParams{
-			JuegoID:         nuevoJuego.ID,
-			Plataforma:      "Steam",
-			HorasJugadas:    "45.50",
-			LogrosObtenidos: 50,
-		})
-		if err != nil {
-			log.Printf("Error al insertar copia: %v", err)
-		} else {
-			fmt.Printf("Copia CREADA con éxito -> ID: %d | Plataforma: %s\n", nuevaCopia.ID, nuevaCopia.Plataforma)
+	mux := http.NewServeMux()
+
+	// Rutas de la API REST
+	mux.Handle("/juegos", juegosHandler)
+	mux.Handle("/juegos/", juegosHandler)
+	mux.Handle("/copias", copiasHandler)
+	mux.Handle("/copias/", copiasHandler)
+
+	// Ruta para servir archivos estáticos si se conservan del TP anterior
+	fs := http.FileServer(http.Dir("static"))
+	mux.Handle("/static/", http.StripPrefix("/static/", fs))
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" {
+			http.ServeFile(w, r, "static/index.html")
+			return
 		}
+		http.NotFound(w, r)
+	})
+
+	// Aplicamos el middleware de logging a todo el mux
+	loggedMux := handlers.LoggingMiddleware(mux)
+
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
 	}
 
-	// 7. Listar todos los juegos almacenados
-	juegos, err := queries.ListJuegos(ctx)
-	if err != nil {
-		log.Fatalf("Error al listar juegos: %v", err)
-	}
-
-	fmt.Println("\n--- Lista de Juegos en Game Vault ---")
-	for _, j := range juegos {
-		fmt.Printf("- [%d] %s (%s) - Logros: %d\n", j.ID, j.Titulo, j.Genero, j.LogrosTotales)
+	log.Printf("Servidor GameVault corriendo en http://localhost:%s\n", port)
+	if err := http.ListenAndServe(":"+port, loggedMux); err != nil {
+		log.Fatalf("Error en el servidor HTTP: %v", err)
 	}
 }
