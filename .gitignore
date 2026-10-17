@@ -1,1 +1,3 @@
 db/sqlc/
+tmp_gamevault_server
+tmp/
