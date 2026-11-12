@@ -31,7 +31,7 @@ Siguiendo las directivas de la cátedra para el TP5:
 * [Go](https://go.dev/) (1.21 o superior)
 * [Docker](https://www.docker.com/) y Docker Compose
 * [sqlc](https://sqlc.dev/)
-* [templ]([suspicious link removed])
+* [templ](https://templ.guide)
 * Intérprete `bash`
 
 ---
