@@ -1,30 +1,27 @@
 package handlers
 
 import (
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
 	"strings"
 
-	db "programacion-web/db/sqlc"
 	"programacion-web/logic"
 )
 
 type JuegosHandler struct {
-	queries *db.Queries
+	service *logic.Service
 }
 
-func NewJuegosHandler(q *db.Queries) *JuegosHandler {
-	return &JuegosHandler{queries: q}
+func NewJuegosHandler(s *logic.Service) *JuegosHandler {
+	return &JuegosHandler{service: s}
 }
 
 func (h *JuegosHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	path := strings.Trim(r.URL.Path, "/")
 	parts := strings.Split(path, "/")
 
-	// Ruta base: /juegos
 	if len(parts) == 1 && parts[0] == "juegos" {
 		switch r.Method {
 		case http.MethodGet:
@@ -37,7 +34,6 @@ func (h *JuegosHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Ruta con ID: /juegos/{id}
 	if len(parts) == 2 && parts[0] == "juegos" {
 		parsedID, err := strconv.ParseInt(parts[1], 10, 32)
 		if err != nil || parsedID <= 0 {
@@ -63,7 +59,7 @@ func (h *JuegosHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *JuegosHandler) listJuegos(w http.ResponseWriter, r *http.Request) {
-	juegos, err := h.queries.ListJuegos(r.Context())
+	juegos, err := h.service.ListJuegos(r.Context())
 	if err != nil {
 		http.Error(w, "Error al listar juegos", http.StatusInternalServerError)
 		return
@@ -74,9 +70,9 @@ func (h *JuegosHandler) listJuegos(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *JuegosHandler) getJuego(w http.ResponseWriter, r *http.Request, id int32) {
-	juego, err := h.queries.GetJuegoByID(r.Context(), id)
+	juego, err := h.service.GetJuegoByID(r.Context(), id)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, logic.ErrNotFound) {
 			http.Error(w, "Juego no encontrado", http.StatusNotFound)
 			return
 		}
@@ -95,17 +91,12 @@ func (h *JuegosHandler) createJuego(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := logic.ValidateJuego(input); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	juego, err := h.queries.CreateJuego(r.Context(), db.CreateJuegoParams{
-		Titulo:        input.Titulo,
-		Genero:        input.Genero,
-		LogrosTotales: input.LogrosTotales,
-	})
+	juego, err := h.service.CreateJuego(r.Context(), input)
 	if err != nil {
+		if errors.Is(err, logic.ErrTituloVacio) || errors.Is(err, logic.ErrGeneroVacio) || errors.Is(err, logic.ErrLogrosNegativos) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		http.Error(w, "Error al guardar el juego en base de datos", http.StatusInternalServerError)
 		return
 	}
@@ -116,55 +107,37 @@ func (h *JuegosHandler) createJuego(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *JuegosHandler) updateJuego(w http.ResponseWriter, r *http.Request, id int32) {
-	_, err := h.queries.GetJuegoByID(r.Context(), id)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			http.Error(w, "Juego no encontrado", http.StatusNotFound)
-			return
-		}
-		http.Error(w, "Error en la consulta", http.StatusInternalServerError)
-		return
-	}
-
 	var input logic.JuegoInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		http.Error(w, "Cuerpo JSON inválido", http.StatusBadRequest)
 		return
 	}
 
-	if err := logic.ValidateJuego(input); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	err = h.queries.UpdateJuego(r.Context(), db.UpdateJuegoParams{
-		ID:            id,
-		Titulo:        input.Titulo,
-		Genero:        input.Genero,
-		LogrosTotales: input.LogrosTotales,
-	})
+	juegoActualizado, err := h.service.UpdateJuego(r.Context(), id, input)
 	if err != nil {
+		if errors.Is(err, logic.ErrNotFound) {
+			http.Error(w, "Juego no encontrado", http.StatusNotFound)
+			return
+		}
+		if errors.Is(err, logic.ErrTituloVacio) || errors.Is(err, logic.ErrGeneroVacio) || errors.Is(err, logic.ErrLogrosNegativos) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		http.Error(w, "Error al actualizar juego", http.StatusInternalServerError)
 		return
 	}
 
-	juegoActualizado, _ := h.queries.GetJuegoByID(r.Context(), id)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(juegoActualizado)
 }
 
 func (h *JuegosHandler) deleteJuego(w http.ResponseWriter, r *http.Request, id int32) {
-	_, err := h.queries.GetJuegoByID(r.Context(), id)
+	err := h.service.DeleteJuego(r.Context(), id)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, logic.ErrNotFound) {
 			http.Error(w, "Juego no encontrado", http.StatusNotFound)
 			return
 		}
-		http.Error(w, "Error en la consulta", http.StatusInternalServerError)
-		return
-	}
-
-	if err := h.queries.DeleteJuego(r.Context(), id); err != nil {
 		http.Error(w, "Error al eliminar juego", http.StatusInternalServerError)
 		return
 	}

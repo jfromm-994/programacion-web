@@ -10,6 +10,7 @@ import (
 
 	db "programacion-web/db/sqlc"
 	"programacion-web/handlers"
+	"programacion-web/logic"
 )
 
 func main() {
@@ -30,10 +31,11 @@ func main() {
 	log.Println("Conexión con PostgreSQL establecida exitosamente.")
 
 	queries := db.New(conn)
+	service := logic.NewService(queries)
 
-	// Instanciamos los controladores
-	juegosHandler := handlers.NewJuegosHandler(queries)
-	copiasHandler := handlers.NewCopiasHandler(queries)
+	// Instanciamos los controladores con la capa de servicio
+	juegosHandler := handlers.NewJuegosHandler(service)
+	copiasHandler := handlers.NewCopiasHandler(service)
 
 	mux := http.NewServeMux()
 
@@ -43,7 +45,7 @@ func main() {
 	mux.Handle("/copias", copiasHandler)
 	mux.Handle("/copias/", copiasHandler)
 
-	// Ruta para servir archivos estáticos si se conservan del TP anterior
+	// Ruta para servir archivos estáticos
 	fs := http.FileServer(http.Dir("static"))
 	mux.Handle("/static/", http.StripPrefix("/static/", fs))
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -54,7 +56,7 @@ func main() {
 		http.NotFound(w, r)
 	})
 
-	// Aplicamos el middleware de logging a todo el mux
+	// Middleware de logging
 	loggedMux := handlers.LoggingMiddleware(mux)
 
 	port := os.Getenv("PORT")

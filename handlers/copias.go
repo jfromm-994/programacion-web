@@ -2,27 +2,26 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
 
-	db "programacion-web/db/sqlc"
 	"programacion-web/logic"
 )
 
 type CopiasHandler struct {
-	queries *db.Queries
+	service *logic.Service
 }
 
-func NewCopiasHandler(q *db.Queries) *CopiasHandler {
-	return &CopiasHandler{queries: q}
+func NewCopiasHandler(s *logic.Service) *CopiasHandler {
+	return &CopiasHandler{service: s}
 }
 
 func (h *CopiasHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	path := strings.Trim(r.URL.Path, "/")
 	parts := strings.Split(path, "/")
 
-	// Ruta base: /copias
 	if len(parts) == 1 && parts[0] == "copias" {
 		switch r.Method {
 		case http.MethodGet:
@@ -35,7 +34,6 @@ func (h *CopiasHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Ruta con ID: /copias/{id}
 	if len(parts) == 2 && parts[0] == "copias" {
 		parsedID, err := strconv.ParseInt(parts[1], 10, 32)
 		if err != nil || parsedID <= 0 {
@@ -68,7 +66,7 @@ func (h *CopiasHandler) listCopiasByJuego(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	copias, err := h.queries.ListCopiasByJuego(r.Context(), int32(parsedJuegoID))
+	copias, err := h.service.ListCopiasByJuego(r.Context(), int32(parsedJuegoID))
 	if err != nil {
 		http.Error(w, "Error al listar copias", http.StatusInternalServerError)
 		return
@@ -85,18 +83,12 @@ func (h *CopiasHandler) createCopia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := logic.ValidateCopia(input); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	copia, err := h.queries.CreateCopia(r.Context(), db.CreateCopiaParams{
-		JuegoID:         input.JuegoID,
-		Plataforma:      input.Plataforma,
-		HorasJugadas:    input.HorasJugadas,
-		LogrosObtenidos: input.LogrosObtenidos,
-	})
+	copia, err := h.service.CreateCopia(r.Context(), input)
 	if err != nil {
+		if errors.Is(err, logic.ErrJuegoIDInvalido) || errors.Is(err, logic.ErrPlataformaVacia) || errors.Is(err, logic.ErrLogrosObtNegativos) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		http.Error(w, "Error al guardar la copia", http.StatusInternalServerError)
 		return
 	}
@@ -107,7 +99,7 @@ func (h *CopiasHandler) createCopia(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *CopiasHandler) deleteCopia(w http.ResponseWriter, r *http.Request, id int32) {
-	if err := h.queries.DeleteCopia(r.Context(), id); err != nil {
+	if err := h.service.DeleteCopia(r.Context(), id); err != nil {
 		http.Error(w, "Error al eliminar la copia", http.StatusInternalServerError)
 		return
 	}
