@@ -1,0 +1,44 @@
+package views
+
+templ Layout(title string) {
+    <!DOCTYPE html>
+    <html lang="es">
+        <head>
+            <meta charset="UTF-8"/>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+            <title>{ title } - GameVault</title>
+            <link
+                rel="stylesheet"
+                href="[suspicious link removed]"
+            />
+            <style>
+                table, th, td {
+                    border: 1px solid var(--pico-muted-border-color, #ccc);
+                    border-collapse: collapse;
+                }
+                th, td {
+                    padding: 0.75rem;
+                }
+            </style>
+        </head>
+        <body>
+            <header class="container">
+                <nav>
+                    <ul>
+                        <li><strong>🎮 GameVault</strong></li>
+                    </ul>
+                    <ul>
+                        <li><a href="/">Catálogo</a></li>
+                    </ul>
+                </nav>
+            </header>
+            <main class="container">
+                { children... }
+            </main>
+            <footer class="container">
+                <hr/>
+                <small>GameVault &copy; - Programación Web (IeS) - TP5 SSR con Templ</small>
+            </footer>
+        </body>
+    </html>
+}

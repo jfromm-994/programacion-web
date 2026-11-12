@@ -1,13 +1,12 @@
 package handlers
 
 import (
-	"encoding/json"
-	"errors"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"programacion-web/logic"
+	"programacion-web/views"
 )
 
 type JuegosHandler struct {
@@ -22,125 +21,127 @@ func (h *JuegosHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	path := strings.Trim(r.URL.Path, "/")
 	parts := strings.Split(path, "/")
 
-	if len(parts) == 1 && parts[0] == "juegos" {
+	// Ruta principal: "/" o "/juegos"
+	if path == "" || (len(parts) == 1 && parts[0] == "juegos") {
 		switch r.Method {
 		case http.MethodGet:
-			h.listJuegos(w, r)
+			h.renderCatalogo(w, r, "")
 		case http.MethodPost:
-			h.createJuego(w, r)
+			h.createJuegoPRG(w, r)
 		default:
 			http.Error(w, "Método no permitido", http.StatusMethodNotAllowed)
 		}
 		return
 	}
 
-	if len(parts) == 2 && parts[0] == "juegos" {
-		parsedID, err := strconv.ParseInt(parts[1], 10, 32)
-		if err != nil || parsedID <= 0 {
-			http.Error(w, "ID de juego inválido", http.StatusBadRequest)
+	// Detalle de un juego y sus copias: "/juegos/detalle"
+	if len(parts) == 2 && parts[0] == "juegos" && parts[1] == "detalle" {
+		if r.Method == http.MethodGet {
+			h.renderDetalle(w, r, "")
 			return
 		}
-		id := int32(parsedID)
+		http.Error(w, "Método no permitido", http.StatusMethodNotAllowed)
+		return
+	}
 
-		switch r.Method {
-		case http.MethodGet:
-			h.getJuego(w, r, id)
-		case http.MethodPut:
-			h.updateJuego(w, r, id)
-		case http.MethodDelete:
-			h.deleteJuego(w, r, id)
-		default:
-			http.Error(w, "Método no permitido", http.StatusMethodNotAllowed)
+	// Eliminación de un juego: "/juegos/delete" (vía formulario POST sin JS)
+	if len(parts) == 2 && parts[0] == "juegos" && parts[1] == "delete" {
+		if r.Method == http.MethodPost {
+			h.deleteJuegoPRG(w, r)
+			return
 		}
+		http.Error(w, "Método no permitido", http.StatusMethodNotAllowed)
 		return
 	}
 
 	http.NotFound(w, r)
 }
 
-func (h *JuegosHandler) listJuegos(w http.ResponseWriter, r *http.Request) {
-	juegos, err := h.service.ListJuegos(r.Context())
+func (h *JuegosHandler) renderCatalogo(w http.ResponseWriter, r *http.Request, errorMsg string) {
+	juegos, err := h.service.ListJuegosConMetricas(r.Context())
 	if err != nil {
-		http.Error(w, "Error al listar juegos", http.StatusInternalServerError)
+		http.Error(w, "Error al recuperar juegos: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(juegos)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_ = views.JuegosPage(juegos, errorMsg).Render(r.Context(), w)
 }
 
-func (h *JuegosHandler) getJuego(w http.ResponseWriter, r *http.Request, id int32) {
-	juego, err := h.service.GetJuegoByID(r.Context(), id)
-	if err != nil {
-		if errors.Is(err, logic.ErrNotFound) {
-			http.Error(w, "Juego no encontrado", http.StatusNotFound)
-			return
-		}
-		http.Error(w, "Error al obtener juego", http.StatusInternalServerError)
+func (h *JuegosHandler) renderDetalle(w http.ResponseWriter, r *http.Request, errorMsg string) {
+	idStr := r.URL.Query().Get("id")
+	parsedID, err := strconv.ParseInt(idStr, 10, 32)
+	if err != nil || parsedID <= 0 {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(juego)
+	juegoID := int32(parsedID)
+	juego, err := h.service.GetJuegoByID(r.Context(), juegoID)
+	if err != nil {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+
+	copias, err := h.service.ListCopiasByJuego(r.Context(), juegoID)
+	if err != nil {
+		http.Error(w, "Error al obtener copias: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_ = views.CopiasPage(juego, copias, errorMsg).Render(r.Context(), w)
 }
 
-func (h *JuegosHandler) createJuego(w http.ResponseWriter, r *http.Request) {
-	var input logic.JuegoInput
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		http.Error(w, "Cuerpo JSON inválido", http.StatusBadRequest)
+func (h *JuegosHandler) createJuegoPRG(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		h.renderCatalogo(w, r, "Formulario inválido")
 		return
 	}
 
-	juego, err := h.service.CreateJuego(r.Context(), input)
-	if err != nil {
-		if errors.Is(err, logic.ErrTituloVacio) || errors.Is(err, logic.ErrGeneroVacio) || errors.Is(err, logic.ErrLogrosNegativos) {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+	titulo := strings.TrimSpace(r.FormValue("titulo"))
+	genero := strings.TrimSpace(r.FormValue("genero"))
+	logrosStr := strings.TrimSpace(r.FormValue("logros_totales"))
+
+	var logros int32
+	if logrosStr != "" {
+		val, err := strconv.ParseInt(logrosStr, 10, 32)
+		if err != nil {
+			h.renderCatalogo(w, r, "Los logros deben ser un número válido")
 			return
 		}
-		http.Error(w, "Error al guardar el juego en base de datos", http.StatusInternalServerError)
+		logros = int32(val)
+	}
+
+	input := logic.JuegoInput{
+		Titulo:        titulo,
+		Genero:        genero,
+		LogrosTotales: logros,
+	}
+
+	_, err := h.service.CreateJuego(r.Context(), input)
+	if err != nil {
+		h.renderCatalogo(w, r, err.Error())
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(juego)
+	// Patrón Post/Redirect/Get
+	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
-func (h *JuegosHandler) updateJuego(w http.ResponseWriter, r *http.Request, id int32) {
-	var input logic.JuegoInput
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		http.Error(w, "Cuerpo JSON inválido", http.StatusBadRequest)
+func (h *JuegosHandler) deleteJuegoPRG(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
 
-	juegoActualizado, err := h.service.UpdateJuego(r.Context(), id, input)
-	if err != nil {
-		if errors.Is(err, logic.ErrNotFound) {
-			http.Error(w, "Juego no encontrado", http.StatusNotFound)
-			return
-		}
-		if errors.Is(err, logic.ErrTituloVacio) || errors.Is(err, logic.ErrGeneroVacio) || errors.Is(err, logic.ErrLogrosNegativos) {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		http.Error(w, "Error al actualizar juego", http.StatusInternalServerError)
+	idStr := r.FormValue("id")
+	parsedID, err := strconv.ParseInt(idStr, 10, 32)
+	if err != nil || parsedID <= 0 {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(juegoActualizado)
-}
-
-func (h *JuegosHandler) deleteJuego(w http.ResponseWriter, r *http.Request, id int32) {
-	err := h.service.DeleteJuego(r.Context(), id)
-	if err != nil {
-		if errors.Is(err, logic.ErrNotFound) {
-			http.Error(w, "Juego no encontrado", http.StatusNotFound)
-			return
-		}
-		http.Error(w, "Error al eliminar juego", http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusNoContent)
+	_ = h.service.DeleteJuego(r.Context(), int32(parsedID))
+	http.Redirect(w, r, "/", http.StatusSeeOther)
 }

@@ -1,0 +1,115 @@
+package views
+
+import (
+    "fmt"
+    db "programacion-web/db/sqlc"
+)
+
+templ CopiasPage(juego db.Juego, copias []db.Copia, errorMsg string) {
+    @Layout(fmt.Sprintf("Copias de %s", juego.Titulo)) {
+        <nav aria-label="breadcrumb">
+            <ul>
+                <li><a href="/">← Volver al Catálogo</a></li>
+                <li><strong>{ juego.Titulo }</strong></li>
+            </ul>
+        </nav>
+
+        <hgroup>
+            <h1>{ juego.Titulo }</h1>
+            <p>Género: <strong>{ juego.Genero }</strong> | Logros Totales: <strong>{ fmt.Sprintf("%d", juego.LogrosTotales) }</strong></p>
+        </hgroup>
+
+        if errorMsg != "" {
+            <article style="background-color: #ffebee; border-color: #c62828; color: #c62828;">
+                <strong>Error:</strong> { errorMsg }
+            </article>
+        }
+
+        <article>
+            <header>
+                <h2>Registrar Copia en Plataforma</h2>
+            </header>
+            <form action="/copias" method="POST">
+                <input type="hidden" name="juego_id" value={ fmt.Sprintf("%d", juego.ID) }/>
+                <div class="grid">
+                    <label for="plataforma">
+                        Plataforma
+                        <input
+                            type="text"
+                            id="plataforma"
+                            name="plataforma"
+                            placeholder="Ej: PC Steam, PS5, Switch"
+                            required
+                        />
+                    </label>
+
+                    <label for="horas_jugadas">
+                        Horas Jugadas
+                        <input
+                            type="number"
+                            step="0.1"
+                            id="horas_jugadas"
+                            name="horas_jugadas"
+                            placeholder="0.0"
+                            min="0"
+                            value="0.0"
+                            required
+                        />
+                    </label>
+
+                    <label for="logros_obtenidos">
+                        Logros Obtenidos
+                        <input
+                            type="number"
+                            id="logros_obtenidos"
+                            name="logros_obtenidos"
+                            placeholder="0"
+                            min="0"
+                            value="0"
+                            required
+                        />
+                    </label>
+                </div>
+                <button type="submit">Agregar Copia</button>
+            </form>
+        </article>
+
+        <section>
+            <h2>Copias Registradas</h2>
+            if len(copias) == 0 {
+                <p><em>No tienes registrada ninguna copia de este juego aún.</em></p>
+            } else {
+                <figure>
+                    <table class="striped">
+                        <thead>
+                            <tr>
+                                <th scope="col">Plataforma</th>
+                                <th scope="col">Horas Jugadas</th>
+                                <th scope="col">Logros Obtenidos</th>
+                                <th scope="col">Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            for _, c := range copias {
+                                <tr>
+                                    <td><strong>{ c.Plataforma }</strong></td>
+                                    <td>{ c.HorasJugadas }</td>
+                                    <td>{ fmt.Sprintf("%d / %d", c.LogrosObtenidos, juego.LogrosTotales) }</td>
+                                    <td>
+                                        <form action="/copias/delete" method="POST" style="margin: 0;">
+                                            <input type="hidden" name="id" value={ fmt.Sprintf("%d", c.ID) }/>
+                                            <input type="hidden" name="juego_id" value={ fmt.Sprintf("%d", juego.ID) }/>
+                                            <button type="submit" class="secondary outline">
+                                                Borrar
+                                            </button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </figure>
+            }
+        </section>
+    }
+}

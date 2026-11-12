@@ -1,13 +1,13 @@
 package handlers
 
 import (
-	"encoding/json"
-	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"programacion-web/logic"
+	"programacion-web/views"
 )
 
 type CopiasHandler struct {
@@ -22,28 +22,20 @@ func (h *CopiasHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	path := strings.Trim(r.URL.Path, "/")
 	parts := strings.Split(path, "/")
 
+	// Alta de copia: "/copias" vía POST
 	if len(parts) == 1 && parts[0] == "copias" {
-		switch r.Method {
-		case http.MethodGet:
-			h.listCopiasByJuego(w, r)
-		case http.MethodPost:
-			h.createCopia(w, r)
-		default:
-			http.Error(w, "Método no permitido", http.StatusMethodNotAllowed)
+		if r.Method == http.MethodPost {
+			h.createCopiaPRG(w, r)
+			return
 		}
+		http.Error(w, "Método no permitido", http.StatusMethodNotAllowed)
 		return
 	}
 
-	if len(parts) == 2 && parts[0] == "copias" {
-		parsedID, err := strconv.ParseInt(parts[1], 10, 32)
-		if err != nil || parsedID <= 0 {
-			http.Error(w, "ID de copia inválido", http.StatusBadRequest)
-			return
-		}
-		id := int32(parsedID)
-
-		if r.Method == http.MethodDelete {
-			h.deleteCopia(w, r, id)
+	// Eliminación de copia: "/copias/delete" vía POST
+	if len(parts) == 2 && parts[0] == "copias" && parts[1] == "delete" {
+		if r.Method == http.MethodPost {
+			h.deleteCopiaPRG(w, r)
 			return
 		}
 		http.Error(w, "Método no permitido", http.StatusMethodNotAllowed)
@@ -53,55 +45,80 @@ func (h *CopiasHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	http.NotFound(w, r)
 }
 
-func (h *CopiasHandler) listCopiasByJuego(w http.ResponseWriter, r *http.Request) {
-	juegoIDStr := r.URL.Query().Get("juego_id")
-	if juegoIDStr == "" {
-		http.Error(w, "Falta el parámetro de consulta ?juego_id=", http.StatusBadRequest)
+func (h *CopiasHandler) createCopiaPRG(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
+
+	juegoIDStr := r.FormValue("juego_id")
+	plataforma := strings.TrimSpace(r.FormValue("plataforma"))
+	horasStr := strings.TrimSpace(r.FormValue("horas_jugadas"))
+	logrosStr := strings.TrimSpace(r.FormValue("logros_obtenidos"))
 
 	parsedJuegoID, err := strconv.ParseInt(juegoIDStr, 10, 32)
 	if err != nil || parsedJuegoID <= 0 {
-		http.Error(w, "Parámetro juego_id inválido", http.StatusBadRequest)
+		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
+	juegoID := int32(parsedJuegoID)
 
-	copias, err := h.service.ListCopiasByJuego(r.Context(), int32(parsedJuegoID))
+	var logros int32
+	if logrosStr != "" {
+		val, err := strconv.ParseInt(logrosStr, 10, 32)
+		if err == nil {
+			logros = int32(val)
+		}
+	}
+
+	if horasStr == "" {
+		horasStr = "0.0"
+	}
+
+	input := logic.CopiaInput{
+		JuegoID:         juegoID,
+		Plataforma:      plataforma,
+		HorasJugadas:    horasStr,
+		LogrosObtenidos: logros,
+	}
+
+	_, err = h.service.CreateCopia(r.Context(), input)
 	if err != nil {
-		http.Error(w, "Error al listar copias", http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(copias)
-}
-
-func (h *CopiasHandler) createCopia(w http.ResponseWriter, r *http.Request) {
-	var input logic.CopiaInput
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		http.Error(w, "Cuerpo JSON inválido", http.StatusBadRequest)
-		return
-	}
-
-	copia, err := h.service.CreateCopia(r.Context(), input)
-	if err != nil {
-		if errors.Is(err, logic.ErrJuegoIDInvalido) || errors.Is(err, logic.ErrPlataformaVacia) || errors.Is(err, logic.ErrLogrosObtNegativos) {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+		// En caso de error, re-renderizamos la vista de copias mostrando el cartel de error
+		juego, getErr := h.service.GetJuegoByID(r.Context(), juegoID)
+		if getErr != nil {
+			http.Redirect(w, r, "/", http.StatusSeeOther)
 			return
 		}
-		http.Error(w, "Error al guardar la copia", http.StatusInternalServerError)
+		copias, _ := h.service.ListCopiasByJuego(r.Context(), juegoID)
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_ = views.CopiasPage(juego, copias, err.Error()).Render(r.Context(), w)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(copia)
+	// Éxito: Post/Redirect/Get hacia la vista de detalle
+	redirectURL := fmt.Sprintf("/juegos/detalle?id=%d", juegoID)
+	http.Redirect(w, r, redirectURL, http.StatusSeeOther)
 }
 
-func (h *CopiasHandler) deleteCopia(w http.ResponseWriter, r *http.Request, id int32) {
-	if err := h.service.DeleteCopia(r.Context(), id); err != nil {
-		http.Error(w, "Error al eliminar la copia", http.StatusInternalServerError)
+func (h *CopiasHandler) deleteCopiaPRG(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+
+	idStr := r.FormValue("id")
+	juegoIDStr := r.FormValue("juego_id")
+
+	parsedID, err := strconv.ParseInt(idStr, 10, 32)
+	if err == nil && parsedID > 0 {
+		_ = h.service.DeleteCopia(r.Context(), int32(parsedID))
+	}
+
+	if juegoIDStr != "" {
+		http.Redirect(w, r, fmt.Sprintf("/juegos/detalle?id=%s", juegoIDStr), http.StatusSeeOther)
+		return
+	}
+
+	http.Redirect(w, r, "/", http.StatusSeeOther)
 }

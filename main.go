@@ -33,30 +33,20 @@ func main() {
 	queries := db.New(conn)
 	service := logic.NewService(queries)
 
-	// Instanciamos los controladores con la capa de servicio
+	// Controladores con vistas SSR y lógica de negocio
 	juegosHandler := handlers.NewJuegosHandler(service)
 	copiasHandler := handlers.NewCopiasHandler(service)
 
 	mux := http.NewServeMux()
 
-	// Rutas de la API REST
+	// Rutas de la aplicación web (SSR con Templ)
+	mux.Handle("/", juegosHandler)
 	mux.Handle("/juegos", juegosHandler)
 	mux.Handle("/juegos/", juegosHandler)
 	mux.Handle("/copias", copiasHandler)
 	mux.Handle("/copias/", copiasHandler)
 
-	// Ruta para servir archivos estáticos
-	fs := http.FileServer(http.Dir("static"))
-	mux.Handle("/static/", http.StripPrefix("/static/", fs))
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/" {
-			http.ServeFile(w, r, "static/index.html")
-			return
-		}
-		http.NotFound(w, r)
-	})
-
-	// Middleware de logging
+	// Middleware de observabilidad/logging requerido por la cátedra
 	loggedMux := handlers.LoggingMiddleware(mux)
 
 	port := os.Getenv("PORT")

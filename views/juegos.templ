@@ -1,0 +1,112 @@
+package views
+
+import (
+    "fmt"
+    db "programacion-web/db/sqlc"
+)
+
+templ JuegosPage(juegos []db.ListJuegosConMetricasRow, errorMsg string) {
+    @Layout("Catálogo de Juegos") {
+        <hgroup>
+            <h1>Catálogo de Videojuegos</h1>
+            <p>Gestión de títulos y seguimiento multiplataforma</p>
+        </hgroup>
+
+        if errorMsg != "" {
+            <article style="background-color: #ffebee; border-color: #c62828; color: #c62828;">
+                <strong>Error:</strong> { errorMsg }
+            </article>
+        }
+
+        <article>
+            <header>
+                <h2>Agregar Nuevo Juego</h2>
+            </header>
+            <form action="/juegos" method="POST">
+                <div class="grid">
+                    <label for="titulo">
+                        Título del Juego
+                        <input
+                            type="text"
+                            id="titulo"
+                            name="titulo"
+                            placeholder="Ej: Hollow Knight"
+                            required
+                        />
+                    </label>
+
+                    <label for="genero">
+                        Género Principal
+                        <input
+                            type="text"
+                            id="genero"
+                            name="genero"
+                            placeholder="Ej: Metroidvania"
+                            required
+                        />
+                    </label>
+
+                    <label for="logros_totales">
+                        Logros Totales
+                        <input
+                            type="number"
+                            id="logros_totales"
+                            name="logros_totales"
+                            placeholder="0"
+                            min="0"
+                            value="0"
+                            required
+                        />
+                    </label>
+                </div>
+                <button type="submit">Guardar Juego</button>
+            </form>
+        </article>
+
+        <section>
+            <h2>Juegos Registrados</h2>
+            if len(juegos) == 0 {
+                <p><em>No hay videojuegos cargados en el catálogo aún.</em></p>
+            } else {
+                <figure>
+                    <table class="striped">
+                        <thead>
+                            <tr>
+                                <th scope="col">ID</th>
+                                <th scope="col">Título</th>
+                                <th scope="col">Género</th>
+                                <th scope="col">Horas Totales</th>
+                                <th scope="col">Progreso (Logros)</th>
+                                <th scope="col">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            for _, j := range juegos {
+                                <tr>
+                                    <td>{ fmt.Sprintf("%d", j.ID) }</td>
+                                    <td><strong>{ j.Titulo }</strong></td>
+                                    <td>{ j.Genero }</td>
+                                    <td>{ j.HorasTotales }</td>
+                                    <td>{ fmt.Sprintf("%d / %d", j.MaxLogrosObtenidos, j.LogrosTotales) }</td>
+                                    <td>
+                                        <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                            <a href={ templ.SafeURL(fmt.Sprintf("/juegos/detalle?id=%d", j.ID)) } role="button" class="outline">
+                                                Ver Copias
+                                            </a>
+                                            <form action="/juegos/delete" method="POST" style="margin: 0;">
+                                                <input type="hidden" name="id" value={ fmt.Sprintf("%d", j.ID) }/>
+                                                <button type="submit" class="secondary outline">
+                                                    Borrar
+                                                </button>
+                                            </form>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </figure>
+            }
+        </section>
+    }
+}

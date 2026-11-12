@@ -10,13 +10,15 @@ import (
 )
 
 var (
-	ErrNotFound           = errors.New("recurso no encontrado")
-	ErrTituloVacio        = errors.New("el título del juego no puede estar vacío")
-	ErrGeneroVacio        = errors.New("el género del juego no puede estar vacío")
-	ErrLogrosNegativos    = errors.New("los logros totales no pueden ser negativos")
-	ErrPlataformaVacia    = errors.New("la plataforma no puede estar vacía")
-	ErrLogrosObtNegativos = errors.New("los logros obtenidos no pueden ser negativos")
-	ErrJuegoIDInvalido    = errors.New("el ID del juego asociado debe ser válido")
+	ErrNotFound            = errors.New("recurso no encontrado")
+	ErrTituloVacio         = errors.New("el título del juego no puede estar vacío")
+	ErrGeneroVacio         = errors.New("el género del juego no puede estar vacío")
+	ErrLogrosNegativos     = errors.New("los logros totales no pueden ser negativos")
+	ErrPlataformaVacia     = errors.New("la plataforma no puede estar vacía")
+	ErrLogrosObtNegativos  = errors.New("los logros obtenidos no pueden ser negativos")
+	ErrJuegoIDInvalido     = errors.New("el ID del juego asociado debe ser válido")
+	ErrLogrosExcedidos     = errors.New("los logros obtenidos no pueden superar los logros totales del juego")
+	ErrPlataformaDuplicada = errors.New("ya tienes registrada una copia para esa plataforma")
 )
 
 type JuegoInput struct {
@@ -46,6 +48,10 @@ func (s *Service) ListJuegos(ctx context.Context) ([]db.Juego, error) {
 	return s.queries.ListJuegos(ctx)
 }
 
+func (s *Service) ListJuegosConMetricas(ctx context.Context) ([]db.ListJuegosConMetricasRow, error) {
+	return s.queries.ListJuegosConMetricas(ctx)
+}
+
 func (s *Service) GetJuegoByID(ctx context.Context, id int32) (db.Juego, error) {
 	juego, err := s.queries.GetJuegoByID(ctx, id)
 	if err != nil {
@@ -68,11 +74,18 @@ func (s *Service) CreateJuego(ctx context.Context, input JuegoInput) (db.Juego, 
 		return db.Juego{}, ErrLogrosNegativos
 	}
 
-	return s.queries.CreateJuego(ctx, db.CreateJuegoParams{
+	juego, err := s.queries.CreateJuego(ctx, db.CreateJuegoParams{
 		Titulo:        input.Titulo,
 		Genero:        input.Genero,
 		LogrosTotales: input.LogrosTotales,
 	})
+	if err != nil {
+		if strings.Contains(err.Error(), "duplicate key") || strings.Contains(err.Error(), "unique") {
+			return db.Juego{}, errors.New("ya existe un juego registrado con ese título")
+		}
+		return db.Juego{}, err
+	}
+	return juego, nil
 }
 
 func (s *Service) UpdateJuego(ctx context.Context, id int32, input JuegoInput) (db.Juego, error) {
@@ -129,12 +142,30 @@ func (s *Service) CreateCopia(ctx context.Context, input CopiaInput) (db.Copia, 
 		return db.Copia{}, ErrLogrosObtNegativos
 	}
 
-	return s.queries.CreateCopia(ctx, db.CreateCopiaParams{
+	// Validación de dominio: consultar juego base para verificar tope de logros
+	juego, err := s.GetJuegoByID(ctx, input.JuegoID)
+	if err != nil {
+		return db.Copia{}, err
+	}
+
+	if input.LogrosObtenidos > juego.LogrosTotales {
+		return db.Copia{}, ErrLogrosExcedidos
+	}
+
+	copia, err := s.queries.CreateCopia(ctx, db.CreateCopiaParams{
 		JuegoID:         input.JuegoID,
 		Plataforma:      input.Plataforma,
 		HorasJugadas:    input.HorasJugadas,
 		LogrosObtenidos: input.LogrosObtenidos,
 	})
+	if err != nil {
+		if strings.Contains(err.Error(), "duplicate key") || strings.Contains(err.Error(), "unique") {
+			return db.Copia{}, ErrPlataformaDuplicada
+		}
+		return db.Copia{}, err
+	}
+
+	return copia, nil
 }
 
 func (s *Service) DeleteCopia(ctx context.Context, id int32) error {
