@@ -47,7 +47,7 @@ echo "=== 1. Tareas previas: Limpieza de entorno previo ==="
 docker compose down -v
 
 echo "=== 2. Tareas previas: Generando código con sqlc ==="
-sqlc generate
+go run github.com/sqlc-dev/sqlc/cmd/sqlc@latest generate
 
 echo "=== 3. Tareas previas: Compilando binario de la aplicación ==="
 go build -o tmp_gamevault_server main.go

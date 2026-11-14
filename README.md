@@ -42,3 +42,26 @@ La cátedra solicita un comando único para orquestar el ciclo completo de la ap
 
 ```bash
 bash run-app.sh
+```
+
+El script `run-app.sh` automatiza todas las fases requeridas:
+1. **Tareas previas:**
+   * Limpieza de entornos y volúmenes residuales (`docker compose down -v`).
+   * Generación de código SQL tipado con `sqlc generate`.
+   * Compilación de plantillas HTML tipadas con `templ generate`.
+   * Compilación del binario de Go.
+   * Inicialización del contenedor de PostgreSQL con Docker Compose y espera activa de conexión.
+2. **Ejecución de la aplicación:**
+   * Inicio del servidor web en `http://localhost:8080`.
+3. **Tareas posteriores:**
+   * Al interrumpir el servidor con `Ctrl + C`, se ejecuta un `trap` de limpieza que detiene el binario y elimina los contenedores y volúmenes creados.
+
+---
+
+## Verificación de Integridad de la Base de Datos
+
+Para ejecutar las pruebas unitarias y de integración sobre la capa de datos implementadas en entregas previas:
+
+```bash
+bash test.sh
+```

@@ -28,7 +28,7 @@ echo "====================================================="
 echo "=== 2. Tareas previas: Generando código           ==="
 echo "====================================================="
 echo "--> Ejecutando sqlc generate..."
-sqlc generate
+go run github.com/sqlc-dev/sqlc/cmd/sqlc@latest generate
 
 echo "--> Ejecutando templ generate..."
 templ generate

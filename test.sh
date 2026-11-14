@@ -8,7 +8,7 @@ echo "=== 1. Limpiando entorno previo ==="
 docker compose down -v
 
 echo "=== 2. Generando código Go con sqlc ==="
-sqlc generate
+go run github.com/sqlc-dev/sqlc/cmd/sqlc@latest generate
 
 echo "=== 3. Levantando contenedor de PostgreSQL ==="
 docker compose up -d
