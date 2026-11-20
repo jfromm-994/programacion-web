@@ -31,7 +31,7 @@ echo "--> Ejecutando sqlc generate..."
 go run github.com/sqlc-dev/sqlc/cmd/sqlc@latest generate
 
 echo "--> Ejecutando templ generate..."
-templ generate
+go run github.com/a-h/templ/cmd/templ@latest generate
 
 echo ""
 echo "====================================================="

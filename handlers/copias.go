@@ -3,49 +3,28 @@ package handlers
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
 	"programacion-web/logic"
-	"programacion-web/views"
 )
 
-type CopiasHandler struct {
+type CopiasController struct {
 	service *logic.Service
 }
 
-func NewCopiasHandler(s *logic.Service) *CopiasHandler {
-	return &CopiasHandler{service: s}
+func NewCopiasController(s *logic.Service) *CopiasController {
+	return &CopiasController{service: s}
 }
 
-func (h *CopiasHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	path := strings.Trim(r.URL.Path, "/")
-	parts := strings.Split(path, "/")
-
-	// Alta de copia: "/copias" vía POST
-	if len(parts) == 1 && parts[0] == "copias" {
-		if r.Method == http.MethodPost {
-			h.createCopiaPRG(w, r)
-			return
-		}
+// CreateHandler: POST /copias
+func (c *CopiasController) CreateHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
 		http.Error(w, "Método no permitido", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// Eliminación de copia: "/copias/delete" vía POST
-	if len(parts) == 2 && parts[0] == "copias" && parts[1] == "delete" {
-		if r.Method == http.MethodPost {
-			h.deleteCopiaPRG(w, r)
-			return
-		}
-		http.Error(w, "Método no permitido", http.StatusMethodNotAllowed)
-		return
-	}
-
-	http.NotFound(w, r)
-}
-
-func (h *CopiasHandler) createCopiaPRG(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
@@ -82,26 +61,24 @@ func (h *CopiasHandler) createCopiaPRG(w http.ResponseWriter, r *http.Request) {
 		LogrosObtenidos: logros,
 	}
 
-	_, err = h.service.CreateCopia(r.Context(), input)
+	_, err = c.service.CreateCopia(r.Context(), input)
 	if err != nil {
-		// En caso de error, re-renderizamos la vista de copias mostrando el cartel de error
-		juego, getErr := h.service.GetJuegoByID(r.Context(), juegoID)
-		if getErr != nil {
-			http.Redirect(w, r, "/", http.StatusSeeOther)
-			return
-		}
-		copias, _ := h.service.ListCopiasByJuego(r.Context(), juegoID)
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_ = views.CopiasPage(juego, copias, err.Error()).Render(r.Context(), w)
+		redirectURL := fmt.Sprintf("/juegos/detalle?id=%d&error=%s", juegoID, url.QueryEscape(err.Error()))
+		http.Redirect(w, r, redirectURL, http.StatusSeeOther)
 		return
 	}
 
-	// Éxito: Post/Redirect/Get hacia la vista de detalle
 	redirectURL := fmt.Sprintf("/juegos/detalle?id=%d", juegoID)
 	http.Redirect(w, r, redirectURL, http.StatusSeeOther)
 }
 
-func (h *CopiasHandler) deleteCopiaPRG(w http.ResponseWriter, r *http.Request) {
+// DeleteHandler: POST /copias/delete
+func (c *CopiasController) DeleteHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Método no permitido", http.StatusMethodNotAllowed)
+		return
+	}
+
 	if err := r.ParseForm(); err != nil {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
@@ -112,7 +89,7 @@ func (h *CopiasHandler) deleteCopiaPRG(w http.ResponseWriter, r *http.Request) {
 
 	parsedID, err := strconv.ParseInt(idStr, 10, 32)
 	if err == nil && parsedID > 0 {
-		_ = h.service.DeleteCopia(r.Context(), int32(parsedID))
+		_ = c.service.DeleteCopia(r.Context(), int32(parsedID))
 	}
 
 	if juegoIDStr != "" {

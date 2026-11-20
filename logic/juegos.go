@@ -6,6 +6,9 @@ import (
 	"errors"
 	"strings"
 
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
+
 	db "programacion-web/db/sqlc"
 )
 
@@ -20,6 +23,11 @@ var (
 	ErrLogrosExcedidos     = errors.New("los logros obtenidos no pueden superar los logros totales del juego")
 	ErrPlataformaDuplicada = errors.New("ya tienes registrada una copia para esa plataforma")
 )
+
+// cleanText normaliza cadenas de texto en toda la capa lógica (recorta espacios y aplica formato título)
+func cleanText(s string) string {
+	return cases.Title(language.Und).String(strings.ToLower(strings.TrimSpace(s)))
+}
 
 type JuegoInput struct {
 	Titulo        string `json:"titulo"`
@@ -63,11 +71,25 @@ func (s *Service) GetJuegoByID(ctx context.Context, id int32) (db.Juego, error) 
 	return juego, nil
 }
 
+func (s *Service) GetJuegoByTitulo(ctx context.Context, titulo string) (db.Juego, error) {
+	tituloLimpio := cleanText(titulo)
+	juego, err := s.queries.GetJuegoByTitulo(ctx, tituloLimpio)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return db.Juego{}, ErrNotFound
+		}
+		return db.Juego{}, err
+	}
+	return juego, nil
+}
+
 func (s *Service) CreateJuego(ctx context.Context, input JuegoInput) (db.Juego, error) {
-	if strings.TrimSpace(input.Titulo) == "" {
+	titulo := cleanText(input.Titulo)
+	if titulo == "" {
 		return db.Juego{}, ErrTituloVacio
 	}
-	if strings.TrimSpace(input.Genero) == "" {
+	genero := cleanText(input.Genero)
+	if genero == "" {
 		return db.Juego{}, ErrGeneroVacio
 	}
 	if input.LogrosTotales < 0 {
@@ -75,8 +97,8 @@ func (s *Service) CreateJuego(ctx context.Context, input JuegoInput) (db.Juego, 
 	}
 
 	juego, err := s.queries.CreateJuego(ctx, db.CreateJuegoParams{
-		Titulo:        input.Titulo,
-		Genero:        input.Genero,
+		Titulo:        titulo,
+		Genero:        genero,
 		LogrosTotales: input.LogrosTotales,
 	})
 	if err != nil {
@@ -94,10 +116,12 @@ func (s *Service) UpdateJuego(ctx context.Context, id int32, input JuegoInput) (
 		return db.Juego{}, err
 	}
 
-	if strings.TrimSpace(input.Titulo) == "" {
+	titulo := cleanText(input.Titulo)
+	if titulo == "" {
 		return db.Juego{}, ErrTituloVacio
 	}
-	if strings.TrimSpace(input.Genero) == "" {
+	genero := cleanText(input.Genero)
+	if genero == "" {
 		return db.Juego{}, ErrGeneroVacio
 	}
 	if input.LogrosTotales < 0 {
@@ -106,8 +130,8 @@ func (s *Service) UpdateJuego(ctx context.Context, id int32, input JuegoInput) (
 
 	err = s.queries.UpdateJuego(ctx, db.UpdateJuegoParams{
 		ID:            id,
-		Titulo:        input.Titulo,
-		Genero:        input.Genero,
+		Titulo:        titulo,
+		Genero:        genero,
 		LogrosTotales: input.LogrosTotales,
 	})
 	if err != nil {
@@ -135,7 +159,8 @@ func (s *Service) CreateCopia(ctx context.Context, input CopiaInput) (db.Copia, 
 	if input.JuegoID <= 0 {
 		return db.Copia{}, ErrJuegoIDInvalido
 	}
-	if strings.TrimSpace(input.Plataforma) == "" {
+	plataforma := cleanText(input.Plataforma)
+	if plataforma == "" {
 		return db.Copia{}, ErrPlataformaVacia
 	}
 	if input.LogrosObtenidos < 0 {
@@ -154,7 +179,7 @@ func (s *Service) CreateCopia(ctx context.Context, input CopiaInput) (db.Copia, 
 
 	copia, err := s.queries.CreateCopia(ctx, db.CreateCopiaParams{
 		JuegoID:         input.JuegoID,
-		Plataforma:      input.Plataforma,
+		Plataforma:      plataforma,
 		HorasJugadas:    input.HorasJugadas,
 		LogrosObtenidos: input.LogrosObtenidos,
 	})
@@ -170,4 +195,69 @@ func (s *Service) CreateCopia(ctx context.Context, input CopiaInput) (db.Copia, 
 
 func (s *Service) DeleteCopia(ctx context.Context, id int32) error {
 	return s.queries.DeleteCopia(ctx, id)
+}
+
+// SeedInitialData carga registros de prueba si la base de datos está vacía (recomendación de cátedra)
+func (s *Service) SeedInitialData(ctx context.Context) error {
+	juegos, err := s.ListJuegos(ctx)
+	if err != nil {
+		return err
+	}
+
+	if len(juegos) > 0 {
+		return nil
+	}
+
+	// 1. Hollow Knight
+	hk, err := s.CreateJuego(ctx, JuegoInput{
+		Titulo:        "Hollow Knight",
+		Genero:        "Metroidvania",
+		LogrosTotales: 63,
+	})
+	if err == nil {
+		_, _ = s.CreateCopia(ctx, CopiaInput{
+			JuegoID:         hk.ID,
+			Plataforma:      "PC Steam",
+			HorasJugadas:    "45.50",
+			LogrosObtenidos: 52,
+		})
+		_, _ = s.CreateCopia(ctx, CopiaInput{
+			JuegoID:         hk.ID,
+			Plataforma:      "Nintendo Switch",
+			HorasJugadas:    "20.00",
+			LogrosObtenidos: 30,
+		})
+	}
+
+	// 2. Celeste
+	celeste, err := s.CreateJuego(ctx, JuegoInput{
+		Titulo:        "Celeste",
+		Genero:        "Plataformas",
+		LogrosTotales: 32,
+	})
+	if err == nil {
+		_, _ = s.CreateCopia(ctx, CopiaInput{
+			JuegoID:         celeste.ID,
+			Plataforma:      "PC Steam",
+			HorasJugadas:    "18.20",
+			LogrosObtenidos: 25,
+		})
+	}
+
+	// 3. Dead Cells
+	dc, err := s.CreateJuego(ctx, JuegoInput{
+		Titulo:        "Dead Cells",
+		Genero:        "Roguelike",
+		LogrosTotales: 105,
+	})
+	if err == nil {
+		_, _ = s.CreateCopia(ctx, CopiaInput{
+			JuegoID:         dc.ID,
+			Plataforma:      "PlayStation 5",
+			HorasJugadas:    "60.00",
+			LogrosObtenidos: 70,
+		})
+	}
+
+	return nil
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"log"
 	"net/http"
@@ -33,20 +34,30 @@ func main() {
 	queries := db.New(conn)
 	service := logic.NewService(queries)
 
-	// Controladores con vistas SSR y lógica de negocio
-	juegosHandler := handlers.NewJuegosHandler(service)
-	copiasHandler := handlers.NewCopiasHandler(service)
+	// Precarga de registros iniciales si la BD está vacía (recomendación de cátedra)
+	if err := service.SeedInitialData(context.Background()); err != nil {
+		log.Printf("Advertencia al precargar datos iniciales: %v", err)
+	} else {
+		log.Println("Datos iniciales verificados/precargados correctamente.")
+	}
+
+	// Controladores específicos
+	juegosCtrl := handlers.NewJuegosController(service)
+	copiasCtrl := handlers.NewCopiasController(service)
 
 	mux := http.NewServeMux()
 
-	// Rutas de la aplicación web (SSR con Templ)
-	mux.Handle("/", juegosHandler)
-	mux.Handle("/juegos", juegosHandler)
-	mux.Handle("/juegos/", juegosHandler)
-	mux.Handle("/copias", copiasHandler)
-	mux.Handle("/copias/", copiasHandler)
+	// Rutas atómicas de Catálogo y Juegos
+	mux.HandleFunc("/", juegosCtrl.CatalogoHandler)
+	mux.HandleFunc("/juegos", juegosCtrl.CatalogoHandler)
+	mux.HandleFunc("/juegos/detalle", juegosCtrl.DetalleHandler)
+	mux.HandleFunc("/juegos/delete", juegosCtrl.DeleteHandler)
 
-	// Middleware de observabilidad/logging requerido por la cátedra
+	// Rutas atómicas de Copias
+	mux.HandleFunc("/copias", copiasCtrl.CreateHandler)
+	mux.HandleFunc("/copias/delete", copiasCtrl.DeleteHandler)
+
+	// Middleware de observabilidad/logging
 	loggedMux := handlers.LoggingMiddleware(mux)
 
 	port := os.Getenv("PORT")
