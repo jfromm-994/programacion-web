@@ -7,8 +7,9 @@ trap "echo '=== Tareas posteriores: Borrando contenedores y volúmenes ===' && d
 echo "=== 1. Limpiando entorno previo ==="
 docker compose down -v
 
-echo "=== 2. Generando código Go con sqlc ==="
+echo "=== 2. Generando código Go con sqlc y templ ==="
 go run github.com/sqlc-dev/sqlc/cmd/sqlc@latest generate
+go run github.com/a-h/templ/cmd/templ@latest generate
 
 echo "=== 3. Levantando contenedor de PostgreSQL ==="
 docker compose up -d

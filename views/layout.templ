@@ -11,6 +11,8 @@ templ Layout(title string) {
                 rel="stylesheet"
                 href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css"
             />
+            <!-- Librería HTMX para reactividad sin recargas de página (TP6) -->
+            <script src="https://unpkg.com/htmx.org@1.9.10"></script>
             <style>
                 table, th, td {
                     border: 1px solid var(--pico-muted-border-color, #ccc);
@@ -37,7 +39,7 @@ templ Layout(title string) {
             </main>
             <footer class="container">
                 <hr/>
-                <small>GameVault &copy; - Programación Web (IeS) - TP5 SSR con Templ</small>
+                <small>GameVault &copy; - Programación Web (IeS) - TP6 Reactivo con HTMX</small>
             </footer>
         </body>
     </html>

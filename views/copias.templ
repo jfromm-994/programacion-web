@@ -5,32 +5,70 @@ import (
     db "programacion-web/db/sqlc"
 )
 
-templ CopiasPage(juego db.Juego, copias []db.Copia, errorMsg string) {
-    @Layout(fmt.Sprintf("Copias de %s", juego.Titulo)) {
-        <nav aria-label="breadcrumb">
-            <ul>
-                <li><a href="/">← Volver al Catálogo</a></li>
-                <li><strong>{ juego.Titulo }</strong></li>
-            </ul>
-        </nav>
+// CopiasTable renderiza exclusivamente la tabla de copias para actualización reactiva
+templ CopiasTable(juego db.Juego, copias []db.Copia) {
+    <div id="copias-table-container">
+        <h2>Copias Registradas</h2>
+        if len(copias) == 0 {
+            <p><em>No tienes registrada ninguna copia de este juego aún.</em></p>
+        } else {
+            <figure>
+                <table class="striped" id="copias-table">
+                    <thead>
+                        <tr>
+                            <th scope="col">Plataforma</th>
+                            <th scope="col">Horas Jugadas</th>
+                            <th scope="col">Logros Obtenidos</th>
+                            <th scope="col">Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        for _, c := range copias {
+                            <tr>
+                                <td><strong>{ c.Plataforma }</strong></td>
+                                <td>{ c.HorasJugadas }</td>
+                                <td>{ fmt.Sprintf("%d / %d", c.LogrosObtenidos, juego.LogrosTotales) }</td>
+                                <td>
+                                    <button 
+                                        type="button" 
+                                        class="secondary outline"
+                                        hx-delete={ fmt.Sprintf("/copias/%d", c.ID) }
+                                        hx-target="closest tr"
+                                        hx-swap="outerHTML"
+                                        hx-confirm={ fmt.Sprintf("¿Seguro que deseas eliminar la copia de '%s'?", c.Plataforma) }
+                                        style="margin: 0;">
+                                        Borrar
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </figure>
+        }
+    </div>
+}
 
-        <hgroup>
-            <h1>{ juego.Titulo }</h1>
-            <p>Género: <strong>{ juego.Genero }</strong> | Logros Totales: <strong>{ fmt.Sprintf("%d", juego.LogrosTotales) }</strong></p>
-        </hgroup>
-
+// CopiaForm renderiza el formulario para dar de alta una copia
+templ CopiaForm(juegoID int32, errorMsg string) {
+    <div id="copia-form-container">
         if errorMsg != "" {
             <article style="background-color: #ffebee; border-color: #c62828; color: #c62828;">
                 <strong>Error:</strong> { errorMsg }
             </article>
         }
-
         <article>
             <header>
                 <h2>Registrar Copia en Plataforma</h2>
             </header>
-            <form action="/copias" method="POST">
-                <input type="hidden" name="juego_id" value={ fmt.Sprintf("%d", juego.ID) }/>
+            <form 
+                id="copia-form"
+                action="/copias" 
+                method="POST"
+                hx-post="/copias"
+                hx-target="#copias-table-container"
+                hx-swap="outerHTML">
+                <input type="hidden" name="juego_id" value={ fmt.Sprintf("%d", juegoID) }/>
                 <div class="grid">
                     <label for="plataforma">
                         Plataforma
@@ -73,43 +111,35 @@ templ CopiasPage(juego db.Juego, copias []db.Copia, errorMsg string) {
                 <button type="submit">Agregar Copia</button>
             </form>
         </article>
+    </div>
+}
+
+// CopiaFormOOB envuelve el formulario de copia con hx-swap-oob="true"
+templ CopiaFormOOB(juegoID int32, errorMsg string) {
+    <div id="copia-form-container" hx-swap-oob="true">
+        @CopiaForm(juegoID, errorMsg)
+    </div>
+}
+
+// CopiasPage compone la vista completa de detalle de copias
+templ CopiasPage(juego db.Juego, copias []db.Copia, errorMsg string) {
+    @Layout(fmt.Sprintf("Copias de %s", juego.Titulo)) {
+        <nav aria-label="breadcrumb">
+            <ul>
+                <li><a href="/">← Volver al Catálogo</a></li>
+                <li><strong>{ juego.Titulo }</strong></li>
+            </ul>
+        </nav>
+
+        <hgroup>
+            <h1>{ juego.Titulo }</h1>
+            <p>Género: <strong>{ juego.Genero }</strong> | Logros Totales: <strong>{ fmt.Sprintf("%d", juego.LogrosTotales) }</strong></p>
+        </hgroup>
+
+        @CopiaForm(juego.ID, errorMsg)
 
         <section>
-            <h2>Copias Registradas</h2>
-            if len(copias) == 0 {
-                <p><em>No tienes registrada ninguna copia de este juego aún.</em></p>
-            } else {
-                <figure>
-                    <table class="striped">
-                        <thead>
-                            <tr>
-                                <th scope="col">Plataforma</th>
-                                <th scope="col">Horas Jugadas</th>
-                                <th scope="col">Logros Obtenidos</th>
-                                <th scope="col">Acción</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            for _, c := range copias {
-                                <tr>
-                                    <td><strong>{ c.Plataforma }</strong></td>
-                                    <td>{ c.HorasJugadas }</td>
-                                    <td>{ fmt.Sprintf("%d / %d", c.LogrosObtenidos, juego.LogrosTotales) }</td>
-                                    <td>
-                                        <form action="/copias/delete" method="POST" style="margin: 0;">
-                                            <input type="hidden" name="id" value={ fmt.Sprintf("%d", c.ID) }/>
-                                            <input type="hidden" name="juego_id" value={ fmt.Sprintf("%d", juego.ID) }/>
-                                            <button type="submit" class="secondary outline">
-                                                Borrar
-                                            </button>
-                                        </form>
-                                    </td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
-                </figure>
-            }
+            @CopiasTable(juego, copias)
         </section>
     }
 }

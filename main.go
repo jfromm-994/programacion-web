@@ -34,7 +34,7 @@ func main() {
 	queries := db.New(conn)
 	service := logic.NewService(queries)
 
-	// Precarga de registros iniciales si la BD está vacía (recomendación de cátedra)
+	// Precarga de registros iniciales si la BD está vacía
 	if err := service.SeedInitialData(context.Background()); err != nil {
 		log.Printf("Advertencia al precargar datos iniciales: %v", err)
 	} else {
@@ -47,15 +47,18 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	// Rutas atómicas de Catálogo y Juegos
-	mux.HandleFunc("/", juegosCtrl.CatalogoHandler)
-	mux.HandleFunc("/juegos", juegosCtrl.CatalogoHandler)
-	mux.HandleFunc("/juegos/detalle", juegosCtrl.DetalleHandler)
-	mux.HandleFunc("/juegos/delete", juegosCtrl.DeleteHandler)
+	// Rutas de Catálogo y Juegos
+	mux.HandleFunc("GET /", juegosCtrl.CatalogoHandler)
+	mux.HandleFunc("GET /juegos", juegosCtrl.CatalogoHandler)
+	mux.HandleFunc("POST /juegos", juegosCtrl.CatalogoHandler)
+	mux.HandleFunc("GET /juegos/detalle", juegosCtrl.DetalleHandler)
+	mux.HandleFunc("DELETE /juegos/{id}", juegosCtrl.DeleteHandler)
+	mux.HandleFunc("POST /juegos/delete", juegosCtrl.DeleteHandler) // Fallback sin JS
 
-	// Rutas atómicas de Copias
-	mux.HandleFunc("/copias", copiasCtrl.CreateHandler)
-	mux.HandleFunc("/copias/delete", copiasCtrl.DeleteHandler)
+	// Rutas de Copias
+	mux.HandleFunc("POST /copias", copiasCtrl.CreateHandler)
+	mux.HandleFunc("DELETE /copias/{id}", copiasCtrl.DeleteHandler)
+	mux.HandleFunc("POST /copias/delete", copiasCtrl.DeleteHandler) // Fallback sin JS
 
 	// Middleware de observabilidad/logging
 	loggedMux := handlers.LoggingMiddleware(mux)
@@ -65,7 +68,7 @@ func main() {
 		port = "8080"
 	}
 
-	log.Printf("Servidor GameVault corriendo en http://localhost:%s\n", port)
+	log.Printf("Servidor GameVault (TP6 HTMX) corriendo en http://localhost:%s\n", port)
 	if err := http.ListenAndServe(":"+port, loggedMux); err != nil {
 		log.Fatalf("Error en el servidor HTTP: %v", err)
 	}

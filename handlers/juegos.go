@@ -30,7 +30,7 @@ func (c *JuegosController) CatalogoHandler(w http.ResponseWriter, r *http.Reques
 		errorMsg := r.URL.Query().Get("error")
 		c.renderCatalogo(w, r, errorMsg)
 	case http.MethodPost:
-		c.createJuegoPRG(w, r)
+		c.createJuego(w, r)
 	default:
 		http.Error(w, "Método no permitido", http.StatusMethodNotAllowed)
 	}
@@ -68,22 +68,28 @@ func (c *JuegosController) DetalleHandler(w http.ResponseWriter, r *http.Request
 	_ = views.CopiasPage(juego, copias, errorMsg).Render(r.Context(), w)
 }
 
-// DeleteHandler: POST /juegos/delete
+// DeleteHandler: Soporta tanto DELETE /juegos/{id} (HTMX) como POST /juegos/delete (fallback tradicional)
 func (c *JuegosController) DeleteHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
+	var idStr string
+	if r.Method == http.MethodDelete {
+		idStr = r.PathValue("id")
+	} else if r.Method == http.MethodPost {
+		_ = r.ParseForm()
+		idStr = r.FormValue("id")
+	} else {
 		http.Error(w, "Método no permitido", http.StatusMethodNotAllowed)
 		return
 	}
 
-	if err := r.ParseForm(); err != nil {
-		http.Redirect(w, r, "/", http.StatusSeeOther)
-		return
-	}
-
-	idStr := r.FormValue("id")
 	parsedID, err := strconv.ParseInt(idStr, 10, 32)
 	if err == nil && parsedID > 0 {
 		_ = c.service.DeleteJuego(r.Context(), int32(parsedID))
+	}
+
+	// Si es petición HTMX, responde 200 OK con cuerpo vacío para que HTMX remueva la fila
+	if r.Header.Get("HX-Request") == "true" {
+		w.WriteHeader(http.StatusOK)
+		return
 	}
 
 	http.Redirect(w, r, "/", http.StatusSeeOther)
@@ -100,8 +106,15 @@ func (c *JuegosController) renderCatalogo(w http.ResponseWriter, r *http.Request
 	_ = views.JuegosPage(juegos, errorMsg).Render(r.Context(), w)
 }
 
-func (c *JuegosController) createJuegoPRG(w http.ResponseWriter, r *http.Request) {
+func (c *JuegosController) createJuego(w http.ResponseWriter, r *http.Request) {
+	isHTMX := r.Header.Get("HX-Request") == "true"
+
 	if err := r.ParseForm(); err != nil {
+		if isHTMX {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_ = views.JuegoFormOOB("Formulario inválido").Render(r.Context(), w)
+			return
+		}
 		http.Redirect(w, r, "/?error="+url.QueryEscape("Formulario inválido"), http.StatusSeeOther)
 		return
 	}
@@ -114,6 +127,11 @@ func (c *JuegosController) createJuegoPRG(w http.ResponseWriter, r *http.Request
 	if logrosStr != "" {
 		val, err := strconv.ParseInt(logrosStr, 10, 32)
 		if err != nil {
+			if isHTMX {
+				w.Header().Set("Content-Type", "text/html; charset=utf-8")
+				_ = views.JuegoFormOOB("Los logros deben ser un número válido").Render(r.Context(), w)
+				return
+			}
 			http.Redirect(w, r, "/?error="+url.QueryEscape("Los logros deben ser un número válido"), http.StatusSeeOther)
 			return
 		}
@@ -128,7 +146,21 @@ func (c *JuegosController) createJuegoPRG(w http.ResponseWriter, r *http.Request
 
 	_, err := c.service.CreateJuego(r.Context(), input)
 	if err != nil {
+		if isHTMX {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_ = views.JuegoFormOOB(err.Error()).Render(r.Context(), w)
+			return
+		}
 		http.Redirect(w, r, "/?error="+url.QueryEscape(err.Error()), http.StatusSeeOther)
+		return
+	}
+
+	// Éxito: Si es HTMX, devolvemos la tabla actualizada + formulario reseteado (Doble Swap OOB)
+	if isHTMX {
+		juegos, _ := c.service.ListJuegosConMetricas(r.Context())
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_ = views.JuegosTable(juegos).Render(r.Context(), w)
+		_ = views.JuegoFormOOB("").Render(r.Context(), w)
 		return
 	}
 
